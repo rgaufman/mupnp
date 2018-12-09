@@ -10,8 +10,6 @@
 require 'MiniUPnP'
 
 module UPnP
-  attr_reader :lan_ip
-
   # Represent a port mapping decriptor received from the router.
   class PortMapping
     # Internal address.
@@ -69,6 +67,8 @@ module UPnP
     # the incoming port. It can be usefull with some routers.  Try with
     # false, and if it fails try again with true if the firewall allows
     # only UPnP ports.
+
+    attr_reader :lan_ip
 
     def initialize(autodiscover = true, sameport = true, max_wait = 1000)
       raise ArgumentError, 'Max wait time must be >= 1.' if max_wait <= 0
