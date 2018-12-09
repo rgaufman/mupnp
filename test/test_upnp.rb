@@ -9,7 +9,7 @@ class TestUPnP < Test::Unit::TestCase
   def test_discover
     begin
       u = UPnP::UPnP.new(false,1000)
-      assert_nil u.discoverIGD
+      assert_nil u.discover_igd
     rescue UPnP::UPnPException
       puts "Can't test if no upnp device is found"
     end

@@ -85,7 +85,7 @@ module UPnP
 
       @sameport = sameport
 
-      @igd_thread = autodiscover ? Thread.new { discoverIGD } : nil
+      @igd_thread = autodiscover ? Thread.new { discover_igd } : nil
     end
 
     # This method will search for other routers in the network and
@@ -97,8 +97,8 @@ module UPnP
     # interface upnp_wrap.c needs to be hacked.  You can avoid to
     # call this function if autodiscover is true.  If no router or
     # no UPnP devices are found an UPnPException is thrown.
-    def discoverIGD(max_wait_time = @max_wait_time)
-      joinThread
+    def discover_igd(max_wait_time = @max_wait_time)
+      join_thread
       raise ArgumentError, 'Max wait time must be >= 1' if max_wait_time <= 0
 
       sameport = @sameport != false ? 1 : 0
@@ -111,9 +111,12 @@ module UPnP
       )
 
       @urls = MiniUPnP::UPNPUrls.new
-      ObjectSpace.define_finalizer(@urls,proc { |o| MiniUPnP.FreeUPNPUrls(o) })
+      ObjectSpace.define_finalizer(
+        @urls, proc { |o| MiniUPnP.FreeUPNPUrls(o) }
+      )
+
       @data = MiniUPnP::IGDdatas.new
-      @lan = getCString
+      @lan = get_c_string
       r = MiniUPnP.UPNP_GetValidIGD(@list, @urls, @data, @lan, 64)
 
       raise UPnPException.new, 'No IGD Found' if [0, 3].include?(r)
@@ -122,38 +125,38 @@ module UPnP
     end
 
     # Returns the ip of this client
-    def lanIP
-      joinThread
+    def lan_ip
+      join_thread
       @lan
     end
 
     # Returns the external network ip
-    def externalIP
-      joinThread
-      external_ip = getCString
+    def external_ip
+      join_thread
+      external_ip = get_c_string
       r = MiniUPnP.UPNP_GetExternalIPAddress(
         @urls.controlURL, @data.servicetype,external_ip
       )
 
       if r != 0
-        raise UPnPException.new, "Error while retriving the external ip address. #{code2error(r)}."
+        raise UPnPException.new, "Error while retriving the external ip address. #{code_to_error(r)}."
       end
 
       external_ip.rstrip
     end
 
     # Returns the ip of the router
-    def routerIP
-      joinThread
+    def router_ip
+      join_hread
       @data.urlbase.sub(/^.*\//, '').sub(/\:.*/, '')
     end
 
     # Returns the status of the router which is an array of 3 elements.
     # Connection status, Last error, Uptime.
     def status
-      joinThread
-      lastconnerror = getCString
-      status = getCString
+      join_thread
+      lastconnerror = get_c_string
+      status = get_c_string
       uptime = 0
 
       begin
@@ -163,7 +166,7 @@ module UPnP
         )
 
         if r != 0
-          raise UPnPException.new, "Error while retriving status info. #{code2error(r)}."
+          raise UPnPException.new, "Error while retriving status info. #{code_to_error(r)}."
         end
 
         uptime = MiniUPnP.uintp_value(uptime_uint)
@@ -175,9 +178,9 @@ module UPnP
     end
 
     # Router connection information
-    def connectionType
-      joinThread
-      type = getCString
+    def connection_type
+      join_thread
+      type = get_c_string
       if MiniUPnP.UPNP_GetConnectionTypeInfo(@urls.controlURL, @data.servicetype,type) != 0
         raise UPnPException.new, 'Error while retriving connection info.'
       end
@@ -186,8 +189,8 @@ module UPnP
     end
 
     # Total bytes sent from the router to external network
-    def totalBytesSent
-      joinThread
+    def total_bytes_sent
+      join_thread
       v = MiniUPnP.UPNP_GetTotalBytesSent(
         @urls.controlURL_CIF, @data.servicetype_CIF
       )
@@ -198,42 +201,42 @@ module UPnP
     end
 
     # Total bytes received from the external network.
-    def totalBytesReceived
-      joinThread
+    def total_bytes_received
+      join_thread
       v = MiniUPnP.UPNP_GetTotalBytesReceived(
         @urls.controlURL_CIF, @data.servicetype_CIF
       )
-      
+
       raise UPnPException.new, 'Error while retriving total bytes received.' if v < 0
       v
     end
 
     # Total packets sent from the router to the external network.
-    def totalPacketsSent
-      joinThread
+    def total_packets_sent
+      join_thread
       v = MiniUPnP.UPNP_GetTotalPacketsSent(
         @urls.controlURL_CIF, @data.servicetype_CIF
       )
-      
+
       raise UPnPException.new, 'Error while retriving total packets sent.' if v < 0
       v
     end
 
     # Total packets received from the router from the external network.
-    def totalPacketsReceived
-      joinThread
+    def total_packets_received
+      join_thread
       v = MiniUPnP.UPNP_GetTotalBytesSent(
         @urls.controlURL_CIF, @data.servicetype_CIF
       )
-      
+
       raise UPnPException.new, 'Error while retriving total packets received.' if v < 0
       v
     end
 
     # Returns the maximum bitrates detected from the router (may be an
     # ADSL router) The result is in bytes/s.
-    def maxLinkBitrates
-      joinThread
+    def max_link_bitrates
+      join_thread
       up, down = 0, 0
 
       begin
@@ -254,21 +257,21 @@ module UPnP
     end
 
     # An array of mappings registered on the router
-    def portMappings
-      joinThread
+    def port_mappings
+      join_thread
       i, r = 0, 0
       mappings = []
 
       while r == 0
-        rhost = getCString
-        enabled = getCString
-        duration = getCString
-        description = getCString
-        nport = getCString
-        lport = getCString
-        duration = getCString
-        client = getCString
-        protocol = getCString
+        rhost = get_c_string
+        enabled = get_c_string
+        duration = get_c_string
+        description = get_c_string
+        nport = get_c_string
+        lport = get_c_string
+        duration = get_c_string
+        client = get_c_string
+        protocol = get_c_string
 
         r = MiniUPnP.UPNP_GetGenericPortMappingEntry(
           @urls.controlURL, @data.servicetype, i.to_s, nport, client, lport,
@@ -288,17 +291,17 @@ module UPnP
     end
 
     # Get the mapping registered for a specific port and protocol
-    def portMapping(nport, proto)
-      checkProto(proto)
-      checkPort(nport)
+    def port_mapping(nport, proto)
+      check_proto(proto)
+      check_port(nport)
 
       if nport.to_i == 0
         raise ArgumentError, 'Port must be an int value and greater then 0.'
       end
 
-      joinThread
-      client = getCString
-      lport = getCString
+      join_thread
+      client = get_c_string
+      lport = get_c_string
 
       if MiniUPnP.UPNP_GetSpecificPortMappingEntry(@urls.controlURL, @data.servicetype, nport.to_s,proto, client,lport) != 0
         raise UPnPException.new, 'Error while retriving the port mapping.'
@@ -311,11 +314,11 @@ module UPnP
     # port, local port, description, protocol, ip address to
     # register (or do not specify it to register for yours).
     # Protocol must be Protocol::TCP or Protocol::UDP
-    def addPortMapping(nport, lport, proto, desc, client = nil)
-      checkProto(proto)
-      checkPort(nport)
-      checkPort(lport)
-      joinThread
+    def add_port_mapping(nport, lport, proto, desc, client = nil)
+      check_proto(proto)
+      check_port(nport)
+      check_port(lport)
+      join_thread
       client ||= @lan if client == nil
 
       r = MiniUPnP.UPNP_AddPortMapping(
@@ -323,48 +326,48 @@ module UPnP
         desc, proto
       )
 
-      raise UPnPException.new , "Failed add mapping: #{code2error(r)}." if r != 0
+      raise UPnPException.new , "Failed add mapping: #{code_to_error(r)}." if r != 0
     end
 
     # Delete the port mapping for specified network port and protocol
-    def deletePortMapping(nport, proto)
-      checkProto(proto)
-      checkPort(nport)
-      joinThread
+    def delete_port_mapping(nport, proto)
+      check_proto(proto)
+      check_port(nport)
+      join_thread
       r = MiniUPnP.UPNP_DeletePortMapping(
         @urls.controlURL,@data.servicetype, nport.to_s,proto
       )
 
-      raise UPnPException.new, "Failed delete mapping: #{code2error(r)}." if r != 0
+      raise UPnPException.new, "Failed delete mapping: #{code_to_error(r)}." if r != 0
     end
 
     private
 
     # Generates an empty string to use with the library
-    def getCString(len = 128)
+    def get_c_string(len = 128)
       "\0" * len
     end
 
     # Method to wait until the scan is complete
-    def joinThread
-      @igd_thread.join if @igd_thread != nil && Thread.current != @igd_thread        
+    def join_thread
+      @igd_thread.join if @igd_thread && Thread.current != @igd_thread
     end
 
     # Check that the protocol is a correct value
-    def checkProto(proto)
+    def check_proto(proto)
       if proto != Protocol::UDP && proto != Protocol::TCP
         raise ArgumentError, "Unknown protocol #{proto}, only Protocol::TCP and Protocol::UDP are valid."
       end
     end
 
-    def checkPort(port)
+    def check_port(port)
       iport = port.to_i
       if port.to_i != port || iport < 1 || iport > 65_535
         raise ArgumentError, 'Port must be an integer beetween 1 and 65,535.'
       end
     end
 
-    def code2error(code)
+    def code_to_error(code)
       case code
       when 402
         '402 Invalid Args'
@@ -389,7 +392,7 @@ module UPnP
       when 727
         '727 ExternalPortOnlySupportsWildcard - ExternalPort must be a wildcard and cannot be a specific port value'
       else
-        "Unknown Error - #{code2error(r)}"
+        "Unknown Error - #{code}"
       end
     end
   end
