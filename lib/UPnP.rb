@@ -10,6 +10,8 @@
 require 'MiniUPnP'
 
 module UPnP
+  attr_reader :lan_ip
+
   # Represent a port mapping decriptor received from the router.
   class PortMapping
     # Internal address.
@@ -62,10 +64,7 @@ module UPnP
     attr_reader :max_wait_time
     # This will create a new UPnP instance.  max_wait is the maximum
     # time the instance will wait for an answer from the router
-    # while seaching or it autodiscover to true will start a thread
-    # on the background to scan the network.  All the other
-    # functions are safe to be called in the meanwhile, they will
-    # just wait for the scan to end before operating.
+    # while seaching.
     # The variable sameport if set to true will receive UPnP answers from
     # the incoming port. It can be usefull with some routers.  Try with
     # false, and if it fails try again with true if the firewall allows
@@ -74,40 +73,25 @@ module UPnP
     def initialize(autodiscover = true, sameport = true, max_wait = 1000)
       raise ArgumentError, 'Max wait time must be >= 1.' if max_wait <= 0
 
-      if !(autodiscover == true) && !(autodiscover == false)
-        raise ArgumentError, 'Autodiscover must be a boolean value.'
-      end
-
       @max_wait_time = max_wait
-      # start the discover process at the object initialization.
-      # until ruby2, this thread will block the ruby environment
-      # for the wait time.
-
       @sameport = sameport
-
-      @igd_thread = autodiscover ? Thread.new { discover_igd } : nil
+      discover_igd if autodiscover
     end
 
     # This method will search for other routers in the network and
     # will wait the specified number of milliseconds that can be
-    # ovveridden by the parameter.  It has currently (ruby 1.9) a
-    # limitation. As long as thread are cooperative the upnpDiscover
-    # function will block the ruby implementation waiting for the
-    # library.  If this will not be solved with ruby 2.0 the
-    # interface upnp_wrap.c needs to be hacked.  You can avoid to
-    # call this function if autodiscover is true.  If no router or
+    # ovveridden by the parameter. If no router or
     # no UPnP devices are found an UPnPException is thrown.
     def discover_igd(max_wait_time = @max_wait_time)
-      join_thread
       raise ArgumentError, 'Max wait time must be >= 1' if max_wait_time <= 0
 
       sameport = @sameport != false ? 1 : 0
       @list = MiniUPnP.upnpDiscover(max_wait_time, nil, nil, sameport)
 
-      raise UPnPException.new, 'No UPNP Device Found' if @list == nil
+      raise UPnPException.new, 'No UPNP Device Found' if @list.nil?
 
       ObjectSpace.define_finalizer(
-        @list,proc { |o| MiniUPnP.freeUPNPDevlist(o) }
+        @list, proc { |o| MiniUPnP.freeUPNPDevlist(o) }
       )
 
       @urls = MiniUPnP::UPNPUrls.new
@@ -119,20 +103,14 @@ module UPnP
       @lan = get_c_string
       r = MiniUPnP.UPNP_GetValidIGD(@list, @urls, @data, @lan, 64)
 
-      raise UPnPException.new, 'No IGD Found' if [0, 3].include?(r)
+      raise UPnPException.new, 'No IGD Found' if %i[0 3].include?(r)
 
       @lan = @lan.rstrip
-    end
-
-    # Returns the ip of this client
-    def lan_ip
-      join_thread
-      @lan
+      @lan_ip = @lan
     end
 
     # Returns the external network ip
     def external_ip
-      join_thread
       external_ip = get_c_string
       r = MiniUPnP.UPNP_GetExternalIPAddress(
         @urls.controlURL, @data.servicetype,external_ip
@@ -147,14 +125,12 @@ module UPnP
 
     # Returns the ip of the router
     def router_ip
-      join_hread
       @data.urlbase.sub(/^.*\//, '').sub(/\:.*/, '')
     end
 
     # Returns the status of the router which is an array of 3 elements.
     # Connection status, Last error, Uptime.
     def status
-      join_thread
       lastconnerror = get_c_string
       status = get_c_string
       uptime = 0
@@ -179,7 +155,6 @@ module UPnP
 
     # Router connection information
     def connection_type
-      join_thread
       type = get_c_string
       if MiniUPnP.UPNP_GetConnectionTypeInfo(@urls.controlURL, @data.servicetype,type) != 0
         raise UPnPException.new, 'Error while retriving connection info.'
@@ -190,7 +165,6 @@ module UPnP
 
     # Total bytes sent from the router to external network
     def total_bytes_sent
-      join_thread
       v = MiniUPnP.UPNP_GetTotalBytesSent(
         @urls.controlURL_CIF, @data.servicetype_CIF
       )
@@ -202,7 +176,6 @@ module UPnP
 
     # Total bytes received from the external network.
     def total_bytes_received
-      join_thread
       v = MiniUPnP.UPNP_GetTotalBytesReceived(
         @urls.controlURL_CIF, @data.servicetype_CIF
       )
@@ -213,7 +186,6 @@ module UPnP
 
     # Total packets sent from the router to the external network.
     def total_packets_sent
-      join_thread
       v = MiniUPnP.UPNP_GetTotalPacketsSent(
         @urls.controlURL_CIF, @data.servicetype_CIF
       )
@@ -224,7 +196,6 @@ module UPnP
 
     # Total packets received from the router from the external network.
     def total_packets_received
-      join_thread
       v = MiniUPnP.UPNP_GetTotalBytesSent(
         @urls.controlURL_CIF, @data.servicetype_CIF
       )
@@ -236,7 +207,6 @@ module UPnP
     # Returns the maximum bitrates detected from the router (may be an
     # ADSL router) The result is in bytes/s.
     def max_link_bitrates
-      join_thread
       up, down = 0, 0
 
       begin
@@ -258,7 +228,6 @@ module UPnP
 
     # An array of mappings registered on the router
     def port_mappings
-      join_thread
       i, r = 0, 0
       mappings = []
 
@@ -299,7 +268,6 @@ module UPnP
         raise ArgumentError, 'Port must be an int value and greater then 0.'
       end
 
-      join_thread
       client = get_c_string
       lport = get_c_string
 
@@ -318,7 +286,6 @@ module UPnP
       check_proto(proto)
       check_port(nport)
       check_port(lport)
-      join_thread
       client ||= @lan if client == nil
 
       r = MiniUPnP.UPNP_AddPortMapping(
@@ -333,7 +300,6 @@ module UPnP
     def delete_port_mapping(nport, proto)
       check_proto(proto)
       check_port(nport)
-      join_thread
       r = MiniUPnP.UPNP_DeletePortMapping(
         @urls.controlURL,@data.servicetype, nport.to_s,proto
       )
@@ -346,11 +312,6 @@ module UPnP
     # Generates an empty string to use with the library
     def get_c_string(len = 128)
       "\0" * len
-    end
-
-    # Method to wait until the scan is complete
-    def join_thread
-      @igd_thread.join if @igd_thread && Thread.current != @igd_thread
     end
 
     # Check that the protocol is a correct value
@@ -374,25 +335,25 @@ module UPnP
       when 501
         '501 Action Failed'
       when 713
-        '713 SpecifiedArrayIndexInvalid - The specified array index is out of bounds'
+        '713 SpecifiedArrayIndexInvalid: The specified array index is out of bounds'
       when 714
-        '714 NoSuchEntryInArray - The specified value does not exist in the array'
+        '714 NoSuchEntryInArray: The specified value does not exist in the array'
       when 715
-        '715 WildCardNotPermittedInSrcIP - The source IP address cannot be wild-carded'
+        '715 WildCardNotPermittedInSrcIP: The source IP address cannot be wild-carded'
       when 716
-        '716 WildCardNotPermittedInExtPort - The external port cannot be wild-carded'
+        '716 WildCardNotPermittedInExtPort: The external port cannot be wild-carded'
       when 718
-        '718 ConflictInMappingEntry - The port mapping entry specified conflicts with a mapping assigned previously to another client'
+        '718 ConflictInMappingEntry: The port mapping entry specified conflicts with a mapping assigned previously to another client'
       when 724
-        '724 SamePortValuesRequired - Internal and External port values must be the same'
+        '724 SamePortValuesRequired: Internal and External port values must be the same'
       when 725
-        '725 OnlyPermanentLeasesSupported - The NAT implementation only supports permanent lease times on port mappings'
+        '725 OnlyPermanentLeasesSupported: The NAT implementation only supports permanent lease times on port mappings'
       when 726
-        '726 RemoteHostOnlySupportsWildcard - RemoteHost must be a wildcard and cannot be a specific IP address or DNS name'
+        '726 RemoteHostOnlySupportsWildcard: RemoteHost must be a wildcard and cannot be a specific IP address or DNS name'
       when 727
-        '727 ExternalPortOnlySupportsWildcard - ExternalPort must be a wildcard and cannot be a specific port value'
+        '727 ExternalPortOnlySupportsWildcard: ExternalPort must be a wildcard and cannot be a specific port value'
       else
-        "Unknown Error - #{code}"
+        "Unknown Error: #{code}"
       end
     end
   end
